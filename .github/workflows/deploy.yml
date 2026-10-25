@@ -1,0 +1,34 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Referencia de imagen a desplegar (ej: ghcr.io/usuario/isur-orders-api:1.0.0)"
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy por SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/isur-orders
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            export IMAGE_REF="${{ inputs.image_ref }}"
+            docker compose -f compose.prod.yaml pull
+            docker compose -f compose.prod.yaml run --rm migrate
+            docker compose -f compose.prod.yaml up -d api
+            curl -fsS http://localhost:3000/health/ready
+            curl -fsS http://localhost:3000/version
